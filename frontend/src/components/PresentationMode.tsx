@@ -230,13 +230,13 @@ export function PresentationMode({ items, apiKey, onExit }: PresentationModeProp
                 )}
                 {cur.status === 'idle' && (
                   <button type="button" onClick={() => runNarrate(current)} className="btn btn-primary w-full justify-center py-2.5">
-                    ⚡ Narrate with Gemini
+                    ⚡ Narrate
                   </button>
                 )}
                 {cur.status === 'narrating' && (
                   <div className="flex items-center justify-between rounded-lg border border-brand-500/40 bg-brand-500/10 px-3 py-2.5">
                     <span className="flex items-center gap-2 text-sm text-brand-200">
-                      <Spinner className="h-4 w-4" /> Narrating with Gemini · {current.model}…
+                      <Spinner className="h-4 w-4" /> Narrating…
                     </span>
                     <span className="font-mono text-sm tabular-nums text-brand-200">{liveElapsed.toFixed(1)}s</span>
                   </div>

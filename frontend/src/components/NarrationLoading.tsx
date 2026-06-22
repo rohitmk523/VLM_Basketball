@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Spinner } from './Spinner'
 
 const STEPS = [
-  'Uploading clip to Gemini…',
+  'Uploading clip…',
   'Sampling frames…',
   'Grounding on CV events…',
   'Generating play-by-play…',
