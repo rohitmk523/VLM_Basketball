@@ -9,6 +9,7 @@ and provenance (model / elapsed / tokens), then stitch into one reel.
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
 import time
@@ -203,6 +204,8 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=4)
     ap.add_argument("--model", default="flash")
     ap.add_argument("--out", default=str(OUT_DIR / "reel.mp4"))
+    ap.add_argument("--separate", action="store_true",
+                    help="write one named MP4 per play (to share individually) instead of one reel")
     args = ap.parse_args()
 
     if args.plays.strip():
@@ -229,11 +232,25 @@ def main() -> int:
         print(f"    ✓ {elapsed:.1f}s · {tok} tokens · {res.narration.summary[:60]}", flush=True)
         panel = OUT_DIR / f"_panel_{n}.png"
         render_panel(play, vmeta, res, elapsed, panel)
-        seg = OUT_DIR / f"_seg_{n}.mp4"
+        if args.separate:
+            who = re.sub(r"[^A-Za-z0-9]+", "_", play.get("player_a") or "").strip("_")
+            stem = f"{n:02d}_{play['classification'] or 'play'}" + (f"_{who}" if who else "")
+            seg = OUT_DIR / f"{stem}.mp4"
+        else:
+            seg = OUT_DIR / f"_seg_{n}.mp4"
         compose_segment(clip, panel, seg, clip_duration(clip))
+        panel.unlink(missing_ok=True)
         segments.append(seg)
 
-    # concat
+    # one MP4 per play — ready to send individually
+    if args.separate:
+        print("\nINDIVIDUAL CLIPS (send these one by one):")
+        for s in segments:
+            print(f"  {s.name}  ({s.stat().st_size/1e6:.1f} MB)")
+        print(f"\n{len(segments)} clip(s) in {OUT_DIR}")
+        return 0
+
+    # concat into a single reel
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     if len(segments) == 1:
@@ -246,6 +263,9 @@ def main() -> int:
                            capture_output=True, text=True)
         if p.returncode != 0:
             raise RuntimeError(f"concat failed:\n{p.stderr[-1500:]}")
+        for s in segments:
+            s.unlink(missing_ok=True)
+        listf.unlink(missing_ok=True)
     print(f"\nDONE -> {out}  ({out.stat().st_size/1e6:.1f} MB)")
     return 0
 
