@@ -153,6 +153,24 @@ export function SupabaseMode({ settings, onOpenSettings }: SupabaseModeProps) {
   }, [selectedPlayId])
 
   const selectedGame = games.find((g) => g.game_id === selectedGameId) ?? null
+  const inReel = reel.some((r) => r.playId === selectedPlayId)
+
+  const addToReel = useCallback(() => {
+    if (!detail || !selectedPlayId) return
+    const item: ReelItem = {
+      playId: selectedPlayId,
+      classification: detail.classification,
+      note: detail.note,
+      angle: detail.angle,
+      clipUrl: clipUrl(selectedPlayId),
+      events: detail.events,
+      model,
+      fps,
+      mediaResolution,
+      useEvents,
+    }
+    setReel((prev) => [...prev.filter((r) => r.playId !== selectedPlayId), item])
+  }, [detail, selectedPlayId, model, fps, mediaResolution, useEvents])
 
   const runNarrate = useCallback(async () => {
     if (!selectedPlayId) return
@@ -186,14 +204,18 @@ export function SupabaseMode({ settings, onOpenSettings }: SupabaseModeProps) {
       if (ctrl.signal.aborted) return
       setResult(res)
       setElapsed((Date.now() - startedAt) / 1000)
-      // Collect this narration into the recording reel (replace if same play re-narrated).
+      // Queue this play in the recording reel (narration itself re-runs live in Present).
       const item: ReelItem = {
         playId: selectedPlayId,
         classification: detail?.classification ?? '',
         note: detail?.note ?? '',
         angle: detail?.angle ?? '',
         clipUrl: clipUrl(selectedPlayId),
-        result: res,
+        events: detail?.events,
+        model,
+        fps,
+        mediaResolution,
+        useEvents,
       }
       setReel((prev) => [...prev.filter((r) => r.playId !== selectedPlayId), item])
     } catch (err) {
@@ -399,6 +421,17 @@ export function SupabaseMode({ settings, onOpenSettings }: SupabaseModeProps) {
                       {formatRange(detail.start, detail.end)}
                     </span>
                   )}
+                  {detail && (
+                    <button
+                      type="button"
+                      onClick={addToReel}
+                      disabled={inReel}
+                      className="ml-auto rounded-md border border-ink-700 px-2.5 py-1 text-xs text-slate-300 hover:bg-ink-700 disabled:opacity-50"
+                      title="Queue this play for the Present reel"
+                    >
+                      {inReel ? '✓ In reel' : '＋ Add to reel'}
+                    </button>
+                  )}
                 </div>
                 {detail?.note && (
                   <p className="mt-1.5 text-sm text-slate-300">{detail.note}</p>
@@ -528,7 +561,11 @@ export function SupabaseMode({ settings, onOpenSettings }: SupabaseModeProps) {
       </div>
     </div>
     {presenting && reel.length > 0 && (
-      <PresentationMode items={reel} onExit={() => setPresenting(false)} />
+      <PresentationMode
+        items={reel}
+        apiKey={settings.apiKey}
+        onExit={() => setPresenting(false)}
+      />
     )}
     </>
   )
