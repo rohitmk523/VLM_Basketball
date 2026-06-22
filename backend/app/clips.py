@@ -51,6 +51,19 @@ def _clip_path(s3_key: str, start_sec: float, end_sec: float) -> Path:
     return config.CLIP_CACHE / f"{_cache_name(s3_key)}__{start_sec:.2f}_{end_sec:.2f}.mp4"
 
 
+def angle_file_path(s3_key: str) -> Path:
+    """Where a fully-downloaded angle file lives locally (the 'local game' source)."""
+    dst = config.CLIP_CACHE / _cache_name(s3_key)
+    return dst if dst.suffix else dst.with_suffix(".mp4")
+
+
+def _local_source(s3_key: str) -> Path | None:
+    """Return the local full angle file if it's already on disk, else None.
+    Its presence is what makes a game a fast 'local game' (slice from disk, no S3)."""
+    p = angle_file_path(s3_key)
+    return p if (p.exists() and p.stat().st_size > 0) else None
+
+
 def presigned_url(s3_key: str, expires: int | None = None) -> str:
     """Time-limited GET URL for the S3 object (no public ACL needed)."""
     import boto3  # noqa: PLC0415
@@ -170,6 +183,14 @@ def extract_clip(
     # run competing ffmpegs; the waiter returns the cache the winner produced.
     with _path_lock(out):
         if _probe_ok(out):
+            return out
+
+        # Local-first: if the whole angle file is already on disk (a "local game"),
+        # slice from it instantly — no S3, fast on any connection.
+        local = _local_source(s3_key)
+        if local is not None:
+            _ffmpeg_slice(str(local), start_sec, end_sec, out,
+                          config.DEFAULT_VF if vf is None else vf, http=False)
             return out
 
         remote = config.PREFER_REMOTE_SLICE if prefer_remote is None else prefer_remote
