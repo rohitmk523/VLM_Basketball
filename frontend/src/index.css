@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-ink-950 text-slate-200 antialiased;
+    font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+      Helvetica, Arial, sans-serif;
+  }
+
+  /* Tasteful scrollbars for the dark theme. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #2d384f transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: #2d384f;
+    border-radius: 9999px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: #3a4866;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-ink-700 bg-ink-850/80 shadow-lg shadow-black/20;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium
+      transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply bg-brand-500 text-white hover:bg-brand-600;
+  }
+
+  .btn-ghost {
+    @apply border border-ink-600 bg-ink-800 text-slate-200 hover:bg-ink-700;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-ink-600 bg-ink-900 px-3 py-2 text-sm text-slate-100
+      placeholder:text-slate-500 focus:border-accent-500 focus:outline-none focus:ring-1
+      focus:ring-accent-500;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-ink-600 bg-ink-800 px-2.5
+      py-1 text-xs font-medium text-slate-300;
+  }
+}
