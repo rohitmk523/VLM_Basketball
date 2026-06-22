@@ -89,7 +89,6 @@ export interface PlayByPlayItem {
   action: string
   shot_type?: string
   shot_qualifier?: string
-  shooting_hand?: string
   court_location?: string
   contest?: string
   assisted_by?: string

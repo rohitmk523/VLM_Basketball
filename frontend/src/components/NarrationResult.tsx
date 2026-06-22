@@ -7,20 +7,6 @@ interface NarrationResultProps {
   elapsedSeconds: number | null
 }
 
-function confidenceTone(confidence: number | string): string {
-  const n = typeof confidence === 'number' ? confidence : Number(confidence)
-  if (!Number.isFinite(n)) return 'text-slate-500'
-  if (n >= 0.75) return 'text-emerald-400'
-  if (n >= 0.5) return 'text-amber-400'
-  return 'text-red-400'
-}
-
-function formatConfidence(confidence: number | string): string {
-  const n = typeof confidence === 'number' ? confidence : Number(confidence)
-  if (!Number.isFinite(n)) return String(confidence)
-  return `${Math.round(n * 100)}%`
-}
-
 const HIDDEN_TAGS = new Set(['', 'none', 'unknown', 'n/a'])
 
 function tagValue(v?: string | number): string {
@@ -42,7 +28,6 @@ function PlayByPlayRow({ item, index }: { item: PlayByPlayItem; index: number })
   const pills: Array<{ label?: string; value: string }> = [
     { value: tagValue(item.shot_type) },
     { value: tagValue(item.shot_qualifier) },
-    { label: 'hand', value: tagValue(item.shooting_hand) },
     { value: tagValue(item.court_location) },
     { label: 'D', value: tagValue(item.contest) },
     { label: 'assist', value: tagValue(item.assisted_by) },
@@ -80,14 +65,6 @@ function PlayByPlayRow({ item, index }: { item: PlayByPlayItem; index: number })
               <span>
                 <span className="text-slate-600">players</span>{' '}
                 <span className="text-slate-300">{item.players.join(', ')}</span>
-              </span>
-            )}
-            {item.timestamp !== undefined && item.timestamp !== '' && (
-              <span className="font-mono text-slate-400">@ {String(item.timestamp)}</span>
-            )}
-            {item.confidence !== undefined && item.confidence !== '' && (
-              <span className={confidenceTone(item.confidence)}>
-                {formatConfidence(item.confidence)}
               </span>
             )}
           </div>
@@ -159,16 +136,6 @@ export function NarrationResult({ result, elapsedSeconds }: NarrationResultProps
               <PlayByPlayRow key={i} item={item} index={i} />
             ))}
           </ol>
-        </div>
-      )}
-
-      {/* Caveats */}
-      {narration.caveats && (
-        <div className="rounded-lg border border-amber-600/30 bg-amber-600/5 px-4 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-400">
-            Caveats
-          </p>
-          <p className="mt-1 text-sm leading-relaxed text-slate-300">{narration.caveats}</p>
         </div>
       )}
 

@@ -19,7 +19,6 @@ SYSTEM = (
     "jumper, midrange, three, fadeaway, turnaround, hook, bank shot, putback, alley-oop, free throw.\n"
     "- Shot CREATION/mechanics: catch-and-shoot, spot-up, pull-up, step-back, side-step, "
     "off-the-dribble, coming off a screen, in transition, and-one.\n"
-    "- Shooting HAND: left or right, whenever it is visible.\n"
     "- COURT location: left/right corner, left/right wing, top of the key, elbow, free-throw line, "
     "paint, restricted area, mid-post, beyond the arc, half-court.\n"
     "- CONTEST: open, lightly contested, contested, heavily contested, blocked — name the defender "
@@ -30,7 +29,7 @@ SYSTEM = (
     "- Identify players by JERSEY COLOR (team) and JERSEY NUMBER when legible; add the name if it "
     "is provided in the context.\n"
     "- Be VIVID but HONEST. Describe ONLY what the pixels actually show. NEVER fabricate a jersey "
-    "number, a shooting hand, a shot type, or a court location you cannot see — put \"unknown\"/"
+    "number, a shot type, or a court location you cannot see — put \"unknown\"/"
     "\"none\" and LOWER the confidence instead of guessing. Commentary flair lives in the PHRASING, "
     "never in invented facts.\n"
     "- 'description' is the full, rich commentator call for that action; the other fields are the "
@@ -87,8 +86,6 @@ def _tags(ln) -> list[str]:
         out.append(ln.shot_type)
     if getattr(ln, "shot_qualifier", "") not in _SKIP_TAGS:
         out.append(ln.shot_qualifier)
-    if getattr(ln, "shooting_hand", "") not in _SKIP_TAGS:
-        out.append(f"{ln.shooting_hand} hand")
     if getattr(ln, "court_location", "") not in _SKIP_TAGS:
         out.append(ln.court_location)
     if getattr(ln, "contest", "") not in _SKIP_TAGS:

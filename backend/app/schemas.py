@@ -29,9 +29,6 @@ class PlayLine(BaseModel):
         default="none",
         description="Shot creation/mechanics: catch-and-shoot|spot-up|pull-up|step-back|side-step|"
         "off-the-dribble|off-screen|transition|and-one|putback. 'none' if not a shot/unclear.")
-    shooting_hand: str = Field(
-        default="none",
-        description="Hand used to finish/release: left|right. 'unknown' if not visible, 'none' if N/A.")
     court_location: str = Field(
         default="",
         description="Where it happened: left-corner|right-corner|left-wing|right-wing|top-of-key|"

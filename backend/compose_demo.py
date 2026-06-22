@@ -83,7 +83,6 @@ _TAG_SKIP = {"", "none", "unknown", "n/a"}
 def line_tags(ln) -> str:
     vals = [
         ln.shot_type, ln.shot_qualifier,
-        f"{ln.shooting_hand} hand" if ln.shooting_hand not in _TAG_SKIP else "",
         ln.court_location, ln.contest, ln.outcome,
     ]
     return "   ·   ".join(
