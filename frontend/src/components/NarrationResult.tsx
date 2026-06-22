@@ -21,7 +21,33 @@ function formatConfidence(confidence: number | string): string {
   return `${Math.round(n * 100)}%`
 }
 
+const HIDDEN_TAGS = new Set(['', 'none', 'unknown', 'n/a'])
+
+function tagValue(v?: string | number): string {
+  const s = v == null ? '' : String(v).trim()
+  if (HIDDEN_TAGS.has(s.toLowerCase())) return ''
+  return s.replace(/[-_]/g, ' ')
+}
+
+function DetailPill({ label, value }: { label?: string; value: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-brand-500/30 bg-brand-500/10 px-2 py-0.5 text-[10px] capitalize text-brand-200">
+      {label && <span className="text-brand-400/70 lowercase">{label}</span>}
+      <span className="font-medium">{value}</span>
+    </span>
+  )
+}
+
 function PlayByPlayRow({ item, index }: { item: PlayByPlayItem; index: number }) {
+  const pills: Array<{ label?: string; value: string }> = [
+    { value: tagValue(item.shot_type) },
+    { value: tagValue(item.shot_qualifier) },
+    { label: 'hand', value: tagValue(item.shooting_hand) },
+    { value: tagValue(item.court_location) },
+    { label: 'D', value: tagValue(item.contest) },
+    { label: 'assist', value: tagValue(item.assisted_by) },
+  ].filter((p) => p.value)
+
   return (
     <li className="animate-fade-in rounded-lg border border-ink-700 bg-ink-850 px-3 py-2.5">
       <div className="flex items-start gap-3">
@@ -30,6 +56,13 @@ function PlayByPlayRow({ item, index }: { item: PlayByPlayItem; index: number })
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-sm leading-relaxed text-slate-100">{item.description}</p>
+          {pills.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {pills.map((p, i) => (
+                <DetailPill key={i} label={p.label} value={p.value} />
+              ))}
+            </div>
+          )}
           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
             {item.action && (
               <span>

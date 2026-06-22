@@ -8,22 +8,35 @@ from __future__ import annotations
 import json
 
 SYSTEM = (
-    "You are an expert basketball play-by-play analyst. You are shown a SHORT clip "
-    "(usually 10-40s) of a single basketball play from a fixed side-camera, sampled "
-    "at several frames per second. Produce a precise, DESCRIPTIVE play-by-play of "
-    "what the involved players do and how the play ends — e.g. 'red #7 drives baseline, "
-    "pulls a fadeaway jumper, and is blocked by green #10'.\n\n"
+    "You are an elite NBA play-by-play commentator and film analyst — the energy and phrasing "
+    "of a national broadcast caller, with the shot-detail precision of a scout. You are shown a "
+    "SHORT clip (usually 5-40s) of one basketball possession from a fixed side camera, sampled "
+    "at several frames per second. Call the action with RICH, broadcast-quality detail.\n\n"
+    "For each discrete action, capture as much TRUE detail as the footage supports:\n"
+    "- Ball-handling: crossover, between-the-legs, behind-the-back, hesitation/in-and-out, spin, "
+    "euro-step, step-through, jab step, size-up.\n"
+    "- Shot TYPE: layup, finger-roll, floater/teardrop, runner, dunk (one/two-hand, tip-in), "
+    "jumper, midrange, three, fadeaway, turnaround, hook, bank shot, putback, alley-oop, free throw.\n"
+    "- Shot CREATION/mechanics: catch-and-shoot, spot-up, pull-up, step-back, side-step, "
+    "off-the-dribble, coming off a screen, in transition, and-one.\n"
+    "- Shooting HAND: left or right, whenever it is visible.\n"
+    "- COURT location: left/right corner, left/right wing, top of the key, elbow, free-throw line, "
+    "paint, restricted area, mid-post, beyond the arc, half-court.\n"
+    "- CONTEST: open, lightly contested, contested, heavily contested, blocked — name the defender "
+    "and any help defense.\n"
+    "- Outcome with flair: make/miss/block/steal/turnover/foul/and-one (splash, off the iron, "
+    "rim-rattler, finger on it).\n\n"
     "Rules:\n"
-    "- Identify players by JERSEY COLOR (team) and JERSEY NUMBER when legible.\n"
-    "- Name the actions: drive, dribble, crossover, pass, screen/pick, cut, shot "
-    "(type: layup/jumper/fadeaway/floater/three), block/contest, steal, rebound, "
-    "turnover, foul.\n"
-    "- Name the outcome: make / miss / blocked / stolen / turnover / foul.\n"
-    "- NEVER invent a jersey number. If a number is not clearly legible, use the team "
-    "color and a role (ball-handler, defender, screener) and LOWER the confidence.\n"
+    "- Identify players by JERSEY COLOR (team) and JERSEY NUMBER when legible; add the name if it "
+    "is provided in the context.\n"
+    "- Be VIVID but HONEST. Describe ONLY what the pixels actually show. NEVER fabricate a jersey "
+    "number, a shooting hand, a shot type, or a court location you cannot see — put \"unknown\"/"
+    "\"none\" and LOWER the confidence instead of guessing. Commentary flair lives in the PHRASING, "
+    "never in invented facts.\n"
+    "- 'description' is the full, rich commentator call for that action; the other fields are the "
+    "structured tags for the SAME action (keep them consistent with the description).\n"
     "- Timestamps are advisory only; do not assert exact timing.\n"
-    "- Output ONLY the requested JSON. Use \"\" or \"unknown\" and confidence 0.0 where "
-    "a field cannot be determined."
+    "- Output ONLY the requested JSON."
 )
 
 _NO_EVENTS = (
@@ -63,13 +76,36 @@ def build_user_prompt(events=None, context=None, clip_window=None) -> str:
     return "\n".join(parts)
 
 
+_SKIP_TAGS = ("", "none", "unknown")
+
+
+def _tags(ln) -> list[str]:
+    out = []
+    if getattr(ln, "action", "") not in _SKIP_TAGS:
+        out.append(ln.action)
+    if getattr(ln, "shot_type", "") not in _SKIP_TAGS:
+        out.append(ln.shot_type)
+    if getattr(ln, "shot_qualifier", "") not in _SKIP_TAGS:
+        out.append(ln.shot_qualifier)
+    if getattr(ln, "shooting_hand", "") not in _SKIP_TAGS:
+        out.append(f"{ln.shooting_hand} hand")
+    if getattr(ln, "court_location", "") not in _SKIP_TAGS:
+        out.append(ln.court_location)
+    if getattr(ln, "contest", "") not in _SKIP_TAGS:
+        out.append(ln.contest)
+    if getattr(ln, "outcome", "") not in _SKIP_TAGS:
+        out.append(ln.outcome)
+    return out
+
+
 def render(narration) -> str:
     lines = []
     for i, ln in enumerate(narration.play_by_play, 1):
         who = f" [{', '.join(ln.players)}]" if ln.players else ""
-        tail = [t for t in (ln.action, ln.outcome if ln.outcome != "none" else "") if t]
-        meta = f" ({' / '.join(tail)}, conf {ln.confidence:.2f})" if tail else f" (conf {ln.confidence:.2f})"
-        lines.append(f"{i:>2}. {ln.description}{who}{meta}")
+        assist = f" (assist: {ln.assisted_by})" if getattr(ln, "assisted_by", "") else ""
+        tags = _tags(ln)
+        meta = f"\n      ↳ {' · '.join(tags)}" if tags else ""
+        lines.append(f"{i:>2}. {ln.description}{who}{assist}  [conf {ln.confidence:.2f}]{meta}")
     body = "\n".join(lines) if lines else "(no play-by-play lines returned)"
     out = f"SUMMARY: {narration.summary}\n\n{body}"
     if narration.caveats:

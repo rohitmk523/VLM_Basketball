@@ -87,6 +87,12 @@ export interface PlayByPlayItem {
   description: string
   players: string[]
   action: string
+  shot_type?: string
+  shot_qualifier?: string
+  shooting_hand?: string
+  court_location?: string
+  contest?: string
+  assisted_by?: string
   outcome: string
   timestamp: string | number
   confidence: number | string
