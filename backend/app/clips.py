@@ -8,14 +8,20 @@ Two strategies:
   2. ensure_angle_cached + local slice (FALLBACK): download the whole angle file once
      into a local cache, then slice locally. Used only if the ranged path fails.
 
-The production mp4s are non-faststart (moov atom at the end). Ranged seeking still
-works as long as `-ss` is given BEFORE `-i` (so ffmpeg seeks the input) and the http
-protocol is allowed to reconnect — validated against the live 4.24 GB files.
+Ranged seeking works because `-ss` is given BEFORE `-i` (so ffmpeg seeks the input)
+and the http protocol is allowed to reconnect — validated against the live files.
+
+Concurrency: the UI fires several requests for the SAME clip (preview <video>,
+narrate, re-renders). Each slice writes to a UNIQUE temp file then atomically renames
+into place, and a per-clip lock makes duplicate callers reuse the first result
+instead of running competing ffmpegs that would corrupt each other's output.
 """
 from __future__ import annotations
 
+import os
 import re
 import subprocess
+import threading
 from pathlib import Path
 
 from . import config
@@ -23,6 +29,21 @@ from . import config
 
 def _cache_name(s3_key: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]", "_", s3_key)
+
+
+# One lock per clip-cache path so concurrent requests for the same clip don't
+# both slice it; the second waits, then returns the cached result.
+_locks_guard = threading.Lock()
+_locks: dict[str, threading.Lock] = {}
+
+
+def _path_lock(path: Path) -> threading.Lock:
+    key = str(path)
+    with _locks_guard:
+        lk = _locks.get(key)
+        if lk is None:
+            lk = _locks[key] = threading.Lock()
+        return lk
 
 
 def _clip_path(s3_key: str, start_sec: float, end_sec: float) -> Path:
@@ -42,23 +63,60 @@ def presigned_url(s3_key: str, expires: int | None = None) -> str:
     )
 
 
-def _ffmpeg_slice(src: str, start_sec: float, end_sec: float, out: Path, vf: str, http: bool) -> None:
-    """Re-encode [start,end] of `src` into `out` (720p, no audio, faststart)."""
+def _probe_ok(path: Path) -> bool:
+    """True if ffprobe reads a positive duration — i.e. a finalized, playable mp4.
+    Guards against serving/uploading a truncated clip from a killed/hung ffmpeg."""
+    if not path.exists() or path.stat().st_size == 0:
+        return False
+    try:
+        p = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=nw=1:nk=1", str(path)],
+            capture_output=True, text=True, timeout=20,
+        )
+        return p.returncode == 0 and float(p.stdout.strip() or 0) > 0
+    except (ValueError, OSError, subprocess.SubprocessError):
+        return False
+
+
+def _ffmpeg_slice(
+    src: str, start_sec: float, end_sec: float, out: Path, vf: str, http: bool,
+    timeout: float | None = None,
+) -> None:
+    """Re-encode [start,end] of `src` into `out` (720p, no audio, browser-safe).
+    Raises TimeoutError on a hung remote read so the caller can fall back."""
     dur = float(end_sec) - float(start_sec)
     cmd = ["ffmpeg", "-nostdin", "-y"]
     if http:
-        # Keep the HTTP source resilient while ffmpeg range-seeks a large remote mp4.
-        cmd += ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5"]
+        # Survive a flaky/slow link: auto-reconnect on dropped or mid-stream-broken
+        # connections (S3 reads can IncompleteRead on a poor pipe) and on transient
+        # 5xx, retrying for up to the slice timeout.
+        cmd += [
+            "-reconnect", "1", "-reconnect_streamed", "1",
+            "-reconnect_on_network_error", "1", "-reconnect_on_http_error", "5xx",
+            "-reconnect_delay_max", "10",
+        ]
     # -ss BEFORE -i => fast input seek (range requests on a seekable http source).
     cmd += ["-ss", f"{float(start_sec):.3f}", "-i", src, "-t", f"{dur:.3f}"]
     if vf:
         cmd += ["-vf", vf]
+    # Write to a UNIQUE temp file so concurrent slices never share an output path
+    # (the +faststart second pass re-opens the file; a sibling unlinking it mid-pass
+    # is what caused "Unable to re-open output file"). Atomic-rename on success.
+    tmp = out.with_name(f".{out.stem}.{os.getpid()}.{threading.get_ident()}.part.mp4")
+    # yuv420p => renders in every browser (yuvj/4:2:2/4:4:4 show black in Safari etc.);
+    # +faststart => moov up front so the <video> can start without the whole file.
     cmd += ["-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-            "-movflags", "+faststart", str(out)]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    if proc.returncode != 0 or not out.exists() or out.stat().st_size == 0:
-        out.unlink(missing_ok=True)
-        raise RuntimeError(f"ffmpeg failed:\n{proc.stderr[-2000:]}")
+            "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(tmp)]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired as e:
+        tmp.unlink(missing_ok=True)
+        raise TimeoutError(f"ffmpeg slice exceeded {timeout}s") from e
+    if proc.returncode != 0 or not _probe_ok(tmp):
+        tmp.unlink(missing_ok=True)
+        raise RuntimeError(f"ffmpeg produced no valid clip:\n{proc.stderr[-2000:]}")
+    os.replace(tmp, out)  # atomic publish into the cache
 
 
 def ensure_angle_cached(s3_key: str) -> Path:
@@ -83,10 +141,11 @@ def extract_clip_remote(s3_key: str, start_sec: float, end_sec: float, vf: str |
     if end_sec <= start_sec:
         raise ValueError("end_sec must be > start_sec")
     out = _clip_path(s3_key, start_sec, end_sec)
-    if out.exists() and out.stat().st_size > 0:
+    if _probe_ok(out):
         return out
     url = presigned_url(s3_key)
-    _ffmpeg_slice(url, start_sec, end_sec, out, config.DEFAULT_VF if vf is None else vf, http=True)
+    _ffmpeg_slice(url, start_sec, end_sec, out, config.DEFAULT_VF if vf is None else vf,
+                  http=True, timeout=config.REMOTE_SLICE_TIMEOUT)
     return out
 
 
@@ -97,21 +156,43 @@ def extract_clip(
     vf: str | None = None,
     prefer_remote: bool | None = None,
 ) -> Path:
-    """Produce a clip for [start,end]. Defaults to the ranged remote slice (no full
-    download); falls back to downloading the whole angle file once if that fails."""
+    """Produce a clip for [start,end]. Defaults to the ranged remote slice (downloads
+    only the window's bytes). A genuine ranged FAILURE falls back to a one-time full
+    download; a TIMEOUT (slow link) does not — downloading a multi-GB file would be
+    far worse — it surfaces a clear error instead."""
     if end_sec <= start_sec:
         raise ValueError("end_sec must be > start_sec")
     out = _clip_path(s3_key, start_sec, end_sec)
-    if out.exists() and out.stat().st_size > 0:
+    if _probe_ok(out):  # valid cached clip (re-slices if a prior attempt was truncated)
         return out
 
-    remote = config.PREFER_REMOTE_SLICE if prefer_remote is None else prefer_remote
-    if remote:
-        try:
-            return extract_clip_remote(s3_key, start_sec, end_sec, vf)
-        except Exception as e:  # noqa: BLE001
-            print(f"[clips] remote ranged slice failed ({e}); downloading full angle file", flush=True)
+    # Serialize per-clip so duplicate requests (preview + narrate + re-renders) don't
+    # run competing ffmpegs; the waiter returns the cache the winner produced.
+    with _path_lock(out):
+        if _probe_ok(out):
+            return out
 
-    src = ensure_angle_cached(s3_key)
-    _ffmpeg_slice(str(src), start_sec, end_sec, out, config.DEFAULT_VF if vf is None else vf, http=False)
-    return out
+        remote = config.PREFER_REMOTE_SLICE if prefer_remote is None else prefer_remote
+        if remote:
+            try:
+                return extract_clip_remote(s3_key, start_sec, end_sec, vf)
+            except TimeoutError as e:
+                raise RuntimeError(
+                    f"Clip slice timed out after {config.REMOTE_SLICE_TIMEOUT}s — the "
+                    f"connection to S3 is slow. Pre-warm the clip cache (prewarm.py), or run "
+                    f"the backend closer to the bucket (same AWS region)."
+                ) from e
+            except Exception as e:  # noqa: BLE001
+                if not config.ALLOW_FULL_DOWNLOAD:
+                    # Never silently pull a multi-GB file — that's hours on a slow link.
+                    raise RuntimeError(
+                        f"Ranged clip slice failed ({str(e).splitlines()[0]}). Full-angle "
+                        f"download is disabled (it would fetch the whole multi-GB file). "
+                        f"Pre-warm the cache or run closer to S3; set VLM_ALLOW_FULL_DOWNLOAD=1 "
+                        f"to override."
+                    ) from e
+                print(f"[clips] remote ranged slice failed ({e}); downloading full angle file", flush=True)
+
+        src = ensure_angle_cached(s3_key)
+        _ffmpeg_slice(str(src), start_sec, end_sec, out, config.DEFAULT_VF if vf is None else vf, http=False)
+        return out

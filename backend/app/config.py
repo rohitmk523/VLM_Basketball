@@ -54,6 +54,12 @@ DEFAULT_VF = os.environ.get("VLM_EXTRACT_VF", "scale=-2:720")
 # Prefer ranged HTTP slicing straight from S3 (presigned URL) over full download.
 PREFER_REMOTE_SLICE = os.environ.get("VLM_PREFER_REMOTE_SLICE", "1") not in ("0", "false", "False")
 S3_PRESIGN_TTL = int(os.environ.get("VLM_S3_PRESIGN_TTL", "3600"))
+# Hard cap on a ranged remote slice (a slow link to S3 can make a short clip take
+# minutes). On timeout we surface a clear error rather than downloading a multi-GB file.
+REMOTE_SLICE_TIMEOUT = int(os.environ.get("VLM_REMOTE_SLICE_TIMEOUT", "240"))
+# A failed ranged slice will NOT silently download the whole multi-GB angle file
+# (catastrophic on a slow link). Opt in only if you're on a fast in-region link.
+ALLOW_FULL_DOWNLOAD = os.environ.get("VLM_ALLOW_FULL_DOWNLOAD", "0") in ("1", "true", "True")
 # Pad each side of a play's [start,end] so the clip captures build-up + outcome.
 DEFAULT_CLIP_PAD = float(os.environ.get("VLM_CLIP_PAD", "3"))
 

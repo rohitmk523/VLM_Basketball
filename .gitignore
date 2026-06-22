@@ -17,5 +17,8 @@ frontend/.env
 *.mp4
 *.mov
 
+# --- dev launcher logs ---
+.dev-logs/
+
 # --- os ---
 .DS_Store
