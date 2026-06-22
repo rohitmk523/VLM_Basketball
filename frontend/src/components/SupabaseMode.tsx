@@ -26,6 +26,7 @@ import { NarrationControls } from './NarrationControls'
 import { NarrationResult } from './NarrationResult'
 import { NarrationLoading } from './NarrationLoading'
 import { CostPanel } from './CostPanel'
+import { PresentationMode, type ReelItem } from './PresentationMode'
 import { Spinner } from './Spinner'
 import { SparkIcon } from './icons'
 
@@ -72,6 +73,10 @@ export function SupabaseMode({ settings, onOpenSettings }: SupabaseModeProps) {
   const [result, setResult] = useState<NarrateResponse | null>(null)
   const [elapsed, setElapsed] = useState<number | null>(null)
   const narrateAbort = useRef<AbortController | null>(null)
+
+  // Recording reel: narrated plays auto-collect here; "Present" plays them back-to-back.
+  const [reel, setReel] = useState<ReelItem[]>([])
+  const [presenting, setPresenting] = useState(false)
 
   // Sync request controls to settings whenever settings change (e.g. after first load).
   useEffect(() => {
@@ -181,6 +186,16 @@ export function SupabaseMode({ settings, onOpenSettings }: SupabaseModeProps) {
       if (ctrl.signal.aborted) return
       setResult(res)
       setElapsed((Date.now() - startedAt) / 1000)
+      // Collect this narration into the recording reel (replace if same play re-narrated).
+      const item: ReelItem = {
+        playId: selectedPlayId,
+        classification: detail?.classification ?? '',
+        note: detail?.note ?? '',
+        angle: detail?.angle ?? '',
+        clipUrl: clipUrl(selectedPlayId),
+        result: res,
+      }
+      setReel((prev) => [...prev.filter((r) => r.playId !== selectedPlayId), item])
     } catch (err) {
       if (ctrl.signal.aborted) return
       setNarrateError(errMsg(err, 'Narration failed'))
@@ -189,6 +204,7 @@ export function SupabaseMode({ settings, onOpenSettings }: SupabaseModeProps) {
     }
   }, [
     selectedPlayId,
+    detail,
     settings.apiKey,
     model,
     fps,
@@ -201,6 +217,7 @@ export function SupabaseMode({ settings, onOpenSettings }: SupabaseModeProps) {
   useEffect(() => () => narrateAbort.current?.abort(), [])
 
   return (
+    <>
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
       {/* Left: game + plays selector */}
       <div className="space-y-4">
@@ -319,6 +336,42 @@ export function SupabaseMode({ settings, onOpenSettings }: SupabaseModeProps) {
 
       {/* Right: clip + events + narration */}
       <div className="space-y-4">
+        {reel.length > 0 && (
+          <div className="card flex flex-wrap items-center gap-2 p-3">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Presentation reel
+            </span>
+            {reel.map((r, i) => (
+              <span key={r.playId} className="chip gap-1">
+                <span className="text-slate-500">{i + 1}.</span> {r.classification || 'play'}
+                <button
+                  type="button"
+                  onClick={() => setReel((prev) => prev.filter((x) => x.playId !== r.playId))}
+                  className="ml-0.5 text-slate-500 hover:text-red-400"
+                  title="Remove from reel"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setReel([])}
+                className="text-xs text-slate-500 hover:text-slate-300"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={() => setPresenting(true)}
+                className="btn btn-primary px-4 py-2"
+              >
+                ▶ Present ({reel.length})
+              </button>
+            </div>
+          </div>
+        )}
         {!selectedPlayId ? (
           <div className="card flex min-h-[300px] flex-col items-center justify-center gap-2 p-8 text-center">
             <SparkIcon className="h-8 w-8 text-slate-600" />
@@ -474,5 +527,9 @@ export function SupabaseMode({ settings, onOpenSettings }: SupabaseModeProps) {
         )}
       </div>
     </div>
+    {presenting && reel.length > 0 && (
+      <PresentationMode items={reel} onExit={() => setPresenting(false)} />
+    )}
+    </>
   )
 }
