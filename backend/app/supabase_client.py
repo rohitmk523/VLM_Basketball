@@ -36,19 +36,40 @@ def _get(path: str, params: dict) -> list[dict]:
 
 def list_games(limit: int = 200) -> list[dict]:
     rows = _get("games", {"select": "*", "order": "date.desc", "limit": str(limit)})
+    # Which games have their angle files downloaded locally (fast "local games").
+    vids = _get("video_metadata", {"select": "game_id,s3_key", "limit": "2000"})
+    keys_by_game: dict[str, list[str]] = {}
+    for v in vids:
+        keys_by_game.setdefault(str(_pick(v, "game_id", default="")), []).append(
+            str(_pick(v, "s3_key", default="")))
+    from . import clips  # noqa: PLC0415  (clips has no reverse dependency on this module)
+
+    def _is_local(game_id) -> bool:
+        keys = [k for k in keys_by_game.get(str(game_id), []) if k]
+        return bool(keys) and all(
+            (p := clips.angle_file_path(k)).exists() and p.stat().st_size > 0 for k in keys)
+
     out = []
     for g in rows:
         gid = _pick(g, "id", "game_id", "uuid")
-        t1n = _pick(g, "team1_display_name", "team1_name", default="Team 1")
-        t2n = _pick(g, "team2_display_name", "team2_name", default="Team 2")
+        t1n = _pick(g, "team1_display_name", "team1_name", default="")
+        t2n = _pick(g, "team2_display_name", "team2_name", default="")
+        vname = str(_pick(g, "video_name", default="")).strip()
+        # Display names are often null; fall back to the game's video_name so the
+        # dropdown is identifiable instead of "Team 1 vs Team 2".
+        label = f"{t1n} vs {t2n}" if (t1n and t2n) else (vname or "Untitled game")
         out.append({
             "game_id": gid,
             "date": str(_pick(g, "date", "game_date", default="")),
-            "label": f"{t1n} vs {t2n}",
-            "team1": {"name": t1n, "color": str(_pick(g, "team1_color", default=""))},
-            "team2": {"name": t2n, "color": str(_pick(g, "team2_color", default=""))},
+            "label": label,
+            "video_name": vname,
+            "local": _is_local(gid),
+            "team1": {"name": t1n or "Team 1", "color": str(_pick(g, "team1_color", default=""))},
+            "team2": {"name": t2n or "Team 2", "color": str(_pick(g, "team2_color", default=""))},
         })
-    return [g for g in out if g["game_id"]]
+    out = [g for g in out if g["game_id"]]
+    out.sort(key=lambda x: not x["local"])  # local games first; stable sort keeps date order
+    return out
 
 
 def get_game(game_id: str) -> dict:

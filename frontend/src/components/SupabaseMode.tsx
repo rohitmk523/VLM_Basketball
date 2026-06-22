@@ -222,7 +222,7 @@ export function SupabaseMode({ settings, onOpenSettings }: SupabaseModeProps) {
                 <option value="">Select a game…</option>
                 {games.map((g) => (
                   <option key={g.game_id} value={g.game_id}>
-                    {g.label} · {g.date}
+                    {g.local ? '● ' : ''}{g.label} · {g.date}
                   </option>
                 ))}
               </select>
@@ -237,6 +237,11 @@ export function SupabaseMode({ settings, onOpenSettings }: SupabaseModeProps) {
                     <ColorSwatch color={selectedGame.team2.color} />
                     {selectedGame.team2.name}
                   </span>
+                  {selectedGame.local && (
+                    <span className="rounded border border-emerald-600/40 bg-emerald-600/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">
+                      ● LOCAL · instant
+                    </span>
+                  )}
                 </div>
               )}
             </>

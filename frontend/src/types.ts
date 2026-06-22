@@ -35,6 +35,9 @@ export interface Game {
   game_id: string
   date: string
   label: string
+  video_name?: string
+  /** True when this game's angle files are downloaded locally (instant slicing). */
+  local?: boolean
   team1: TeamInfo
   team2: TeamInfo
 }
