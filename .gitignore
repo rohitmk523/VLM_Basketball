@@ -20,5 +20,8 @@ frontend/.env
 # --- dev launcher logs ---
 .dev-logs/
 
+# --- generated demo videos ---
+demo_out/
+
 # --- os ---
 .DS_Store
